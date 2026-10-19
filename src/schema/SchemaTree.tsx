@@ -1,18 +1,11 @@
 import { ChevronDown, ChevronRight, Key, KeyRound, Link, Table2, Eye, Timer } from 'lucide-react'
 import { useState } from 'react'
-import type { RelationKind, SchemaRelation } from './buildSchema'
+import { relationKindLabel, type SchemaRelation } from './buildSchema'
 
 interface SchemaTreeProps {
   relations: SchemaRelation[]
   loading: boolean
   onInsertSelect: (name: string) => void
-}
-
-const KIND_LABEL: Record<RelationKind, string> = {
-  table: 'таблица',
-  view: 'представление',
-  'temp-table': 'временная таблица',
-  'temp-view': 'временное представление',
 }
 
 export function SchemaTree({ relations, loading, onInsertSelect }: SchemaTreeProps) {
@@ -64,7 +57,7 @@ function RelationItem({
         </button>
         <button
           type="button"
-          title={`${KIND_LABEL[relation.kind]}: ${relation.name} — вставить SELECT в редактор`}
+          title={`${relationKindLabel(relation.kind)}: ${relation.name} — вставить SELECT в редактор`}
           onClick={() => {
             onInsertSelect(relation.name)
           }}

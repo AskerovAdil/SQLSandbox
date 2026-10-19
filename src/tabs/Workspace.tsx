@@ -10,6 +10,8 @@ import { ResultPanel } from '../results/ResultPanel'
 import { loadSchema } from '../schema/loadSchema'
 import type { SchemaRelation } from '../schema/buildSchema'
 import { SchemaTree } from '../schema/SchemaTree'
+import { relationKindLabel } from '../schema/buildSchema'
+import { setCompletionTables } from '../editor/monacoSetup'
 import { useUiStore } from '../stores/uiStore'
 import { type Tab, useTabsStore } from '../stores/tabsStore'
 import type { PGliteWorker } from '@electric-sql/pglite/worker'
@@ -33,11 +35,27 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
   const addTabFrom = useTabsStore((state) => state.addTabFrom)
 
   const editorRef = useRef<SqlEditorHandle>(null)
+
   const [results, setResults] = useState<StatementResult[]>([])
   const [running, setRunning] = useState(false)
   const [relations, setRelations] = useState<SchemaRelation[]>([])
   const [schemaLoading, setSchemaLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
+
+  // Автодополнение берёт таблицы из схемы этой вкладки; при уходе со вкладки список очищается.
+  useEffect(() => {
+    setCompletionTables(
+      relations.map((relation) => ({
+        name: relation.name,
+        kindLabel: relationKindLabel(relation.kind),
+        columns: relation.columns.map((column) => ({ name: column.name, type: column.type })),
+      })),
+    )
+  }, [relations])
+
+  useEffect(() => () => {
+    setCompletionTables([])
+  }, [])
 
   const refreshSchema = useCallback(async (db: PGliteWorker) => {
     try {

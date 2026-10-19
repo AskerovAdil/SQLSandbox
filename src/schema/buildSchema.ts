@@ -100,3 +100,17 @@ function relationKind(schema: string, tableType: string): RelationKind {
   if (temporary) return isView ? 'temp-view' : 'temp-table'
   return isView ? 'view' : 'table'
 }
+
+/** Подпись вида объекта на русском: используется в дереве схемы и в автодополнении. */
+export function relationKindLabel(kind: RelationKind): string {
+  switch (kind) {
+    case 'table':
+      return 'таблица'
+    case 'view':
+      return 'представление'
+    case 'temp-table':
+      return 'временная таблица'
+    case 'temp-view':
+      return 'временное представление'
+  }
+}
