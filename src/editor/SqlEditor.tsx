@@ -14,6 +14,8 @@ export type RunScope = 'statement' | 'script'
 
 export interface SqlEditorHandle {
   getRunRequest: (scope: RunScope) => RunRequest
+  /** Вставляет текст в позицию курсора (или заменяет выделение) и возвращает фокус редактору. */
+  insertText: (text: string) => void
 }
 
 export interface EditorError {
@@ -30,11 +32,12 @@ interface SqlEditorProps {
   /** Ctrl+Shift+Enter: весь скрипт. */
   onRunScript: () => void
   error: EditorError | null
+  dark: boolean
 }
 
 const MARKER_OWNER = 'sql-sandbox'
 
-export function SqlEditor({ ref, value, onChange, onRunStatement, onRunScript, error }: SqlEditorProps) {
+export function SqlEditor({ ref, value, onChange, onRunStatement, onRunScript, error, dark }: SqlEditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const runRef = useRef({ onRunStatement, onRunScript })
 
@@ -44,6 +47,13 @@ export function SqlEditor({ ref, value, onChange, onRunStatement, onRunScript, e
 
   useImperativeHandle(ref, () => ({
     getRunRequest: (scope) => readRunRequest(editorRef.current, scope),
+    insertText: (text) => {
+      const editor = editorRef.current
+      const range = editor?.getSelection() ?? editor?.getModel()?.getFullModelRange()
+      if (!editor || !range) return
+      editor.executeEdits('sql-sandbox', [{ range, text, forceMoveMarkers: true }])
+      editor.focus()
+    },
   }))
 
   useEffect(() => {
@@ -98,7 +108,7 @@ export function SqlEditor({ ref, value, onChange, onRunStatement, onRunScript, e
         onChange(next ?? '')
       }}
       onMount={handleMount}
-      theme={prefersDark() ? 'vs-dark' : 'vs'}
+      theme={dark ? 'vs-dark' : 'vs'}
       options={{
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
         fontSize: 14,
@@ -132,6 +142,3 @@ function readRunRequest(editor: Monaco.editor.IStandaloneCodeEditor | null, scop
   return statement ? { text: statement.text, baseOffset: statement.start } : { text: '', baseOffset: 0 }
 }
 
-function prefersDark(): boolean {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-}

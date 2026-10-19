@@ -1,6 +1,7 @@
 import type { PGliteWorker } from '@electric-sql/pglite/worker'
 import { useEffect, useState } from 'react'
 import { openDatabase } from './openDatabase'
+import { discardStagedCopy, peekStagedCopy } from './databaseCopy'
 
 export type DatabaseState =
   | { status: 'loading' }
@@ -15,13 +16,14 @@ export function useDatabase(tabId: string): DatabaseState {
     let cancelled = false
     let opened: PGliteWorker | undefined
 
-    openDatabase(tabId).then(
+    openDatabase(tabId, { loadDataDir: peekStagedCopy(tabId) }).then(
       (db) => {
         if (cancelled) {
           void db.close()
           return
         }
         opened = db
+        discardStagedCopy(tabId)
         setState({ status: 'ready', db })
       },
       (error: unknown) => {

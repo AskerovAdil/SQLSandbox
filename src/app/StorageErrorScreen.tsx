@@ -18,7 +18,7 @@ export function StorageErrorScreen({ error }: StorageErrorScreenProps) {
   }
 
   return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
+    <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
       <h1 className="text-lg font-semibold">Не удалось открыть базу данных</h1>
       <p className="max-w-lg text-sm text-zinc-600 dark:text-zinc-400">
         Браузер не смог инициализировать локальное хранилище (IndexedDB или PGlite). Попробуйте перезагрузить страницу.

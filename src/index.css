@@ -1,5 +1,18 @@
 @import 'tailwindcss';
 
+/* Тёмная тема включается классом dark на <html> (см. App.tsx); по умолчанию — системная. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Видимый фокус для клавиатурной навигации по вкладкам и кнопкам. */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
 }
