@@ -1,6 +1,7 @@
 import type { PGliteWorker } from '@electric-sql/pglite/worker'
 import { splitStatements } from '../sql/splitStatements'
 import { locateErrorInStatement } from './errorLocation'
+import type { PlanDocument } from '../explain/planModel'
 
 export interface ResultColumn {
   name: string
@@ -19,6 +20,8 @@ export type StatementResult =
   | (StatementResultBase & { kind: 'rows'; columns: ResultColumn[]; rows: Record<string, unknown>[] })
   | (StatementResultBase & { kind: 'command'; message: string })
   | (StatementResultBase & { kind: 'error'; message: string; offset: number })
+  /** План EXPLAIN ANALYZE, см. explain/planModel.ts. */
+  | (StatementResultBase & { kind: 'plan'; plan: PlanDocument })
 
 /**
  * Выполняет statements по очереди. После первой ошибки выполнение останавливается:

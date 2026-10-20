@@ -1,12 +1,15 @@
 import { Plus, X } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
+import { TEMPLATES } from '../templates'
 import type { Tab } from '../stores/tabsStore'
 
 interface TabBarProps {
   tabs: Tab[]
   activeId: string
   onSelect: (id: string) => void
-  onAdd: () => void
+  /** null — пустая вкладка, иначе id шаблона. */
+  onAddTemplate: (templateId: string | null) => void
+  onImport: () => void
   onClose: (id: string) => void
   onRename: (id: string, name: string) => void
   onMove: (fromIndex: number, toIndex: number) => void
@@ -14,7 +17,17 @@ interface TabBarProps {
   children?: ReactNode
 }
 
-export function TabBar({ tabs, activeId, onSelect, onAdd, onClose, onRename, onMove, children }: TabBarProps) {
+export function TabBar({
+  tabs,
+  activeId,
+  onSelect,
+  onAddTemplate,
+  onImport,
+  onClose,
+  onRename,
+  onMove,
+  children,
+}: TabBarProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -114,16 +127,63 @@ export function TabBar({ tabs, activeId, onSelect, onAdd, onClose, onRename, onM
           </div>
         )
       })}
+      <NewTabMenu onAddTemplate={onAddTemplate} onImport={onImport} />
+      {children}
+    </div>
+  )
+}
+
+function NewTabMenu({ onAddTemplate, onImport }: { onAddTemplate: (templateId: string | null) => void; onImport: () => void }) {
+  const [open, setOpen] = useState(false)
+  const choose = (action: () => void) => {
+    setOpen(false)
+    action()
+  }
+
+  return (
+    <div className="relative mb-0.5 ml-1">
       <button
         type="button"
         aria-label="Новая вкладка"
+        aria-haspopup="menu"
+        aria-expanded={open}
         title="Новая вкладка"
-        onClick={onAdd}
-        className="mb-0.5 ml-1 rounded p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        onClick={() => {
+          setOpen((value) => !value)
+        }}
+        className="rounded p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
       >
         <Plus size={16} />
       </button>
-      {children}
+      {open && (
+        <div role="menu" className="absolute top-full left-0 z-20 mt-1 w-72 rounded-md border border-zinc-200 bg-white p-1 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          <MenuItem onClick={() => { choose(() => { onAddTemplate(null) }) }} title="Пустая вкладка" hint="Своя база с нуля" />
+          {TEMPLATES.map((template) => (
+            <MenuItem
+              key={template.id}
+              onClick={() => { choose(() => { onAddTemplate(template.id) }) }}
+              title={`Шаблон: ${template.title}`}
+              hint={template.description}
+            />
+          ))}
+          <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />
+          <MenuItem onClick={() => { choose(onImport) }} title="Импорт из файла…" hint=".sql одной вкладки или .json со всеми вкладками" />
+        </div>
+      )}
     </div>
+  )
+}
+
+function MenuItem({ title, hint, onClick }: { title: string; hint: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full flex-col rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+    >
+      <span className="font-medium">{title}</span>
+      <span className="text-xs text-zinc-500">{hint}</span>
+    </button>
   )
 }

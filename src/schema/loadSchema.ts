@@ -1,4 +1,4 @@
-import type { PGliteWorker } from '@electric-sql/pglite/worker'
+import type { QueryDb } from '../transfer/sqlDump'
 import { buildSchema, type ColumnRow, type IndexRow, type KeyRow, type SchemaRelation } from './buildSchema'
 
 const COLUMNS_SQL = `
@@ -30,7 +30,7 @@ WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
 ORDER BY schemaname, tablename, indexname`
 
 /** Метаданные пользовательских объектов базы: три запроса, а не запрос на каждую таблицу. */
-export async function loadSchema(db: PGliteWorker): Promise<SchemaRelation[]> {
+export async function loadSchema(db: QueryDb): Promise<SchemaRelation[]> {
   const [columns, keys, indexes] = await Promise.all([
     db.query<ColumnRow>(COLUMNS_SQL),
     db.query<KeyRow>(KEYS_SQL),

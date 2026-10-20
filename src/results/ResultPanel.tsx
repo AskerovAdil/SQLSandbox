@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { StatementResult } from '../db/executeScript'
+import { ExplainView } from '../explain/ExplainView'
 import { rowsLabel } from '../lib/plural'
 import { ResultGrid } from './ResultGrid'
 
@@ -34,7 +35,7 @@ export function ResultPanel({ results, running }: ResultPanelProps) {
               index === selected ? 'bg-zinc-200 dark:bg-zinc-700' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
             } ${result.kind === 'error' ? 'text-red-600 dark:text-red-400' : ''}`}
           >
-            #{String(result.index + 1)} {result.kind === 'error' ? 'ошибка' : result.kind === 'rows' ? rowsLabel(result.rows.length) : 'ок'}
+            #{String(result.index + 1)} {resultTabLabel(result)}
           </button>
         ))}
       </div>
@@ -63,5 +64,20 @@ function ResultBody({ result }: { result: StatementResult }) {
           <pre className="mt-2 overflow-auto font-mono text-xs text-zinc-500">{result.sql}</pre>
         </div>
       )
+    case 'plan':
+      return <ExplainView plan={result.plan} />
+  }
+}
+
+function resultTabLabel(result: StatementResult): string {
+  switch (result.kind) {
+    case 'error':
+      return 'ошибка'
+    case 'rows':
+      return rowsLabel(result.rows.length)
+    case 'plan':
+      return 'план'
+    case 'command':
+      return 'ок'
   }
 }

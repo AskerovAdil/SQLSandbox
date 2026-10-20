@@ -10,9 +10,9 @@ export interface Tab {
 interface TabsState {
   tabs: Tab[]
   activeId: string
-  /** Создаёт пустую вкладку и делает её активной. Возвращает её id. */
-  addTab: () => string
-  /** Копия кода; данные копирует рабочая область, см. duplicateTabData. */
+  /** Создаёт вкладку (пустую или с именем и кодом) и делает её активной. Возвращает её id. */
+  addTab: (options?: { name?: string; sql?: string }) => string
+  /** Копия кода; данные копирует рабочая область через stageCopy. */
   addTabFrom: (sourceId: string, sql: string) => string
   closeTab: (id: string) => void
   renameTab: (id: string, name: string) => void
@@ -97,8 +97,8 @@ export const useTabsStore = create<TabsState>()(
       tabs: [initialTab],
       activeId: initialTab.id,
 
-      addTab: () => {
-        const tab = createTab(nextTabName(get().tabs))
+      addTab: (options) => {
+        const tab = createTab(options?.name?.trim() || nextTabName(get().tabs), options?.sql ?? '')
         set((state) => ({ tabs: [...state.tabs, tab], activeId: tab.id }))
         return tab.id
       },
