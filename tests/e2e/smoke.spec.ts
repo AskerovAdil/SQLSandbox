@@ -44,6 +44,8 @@ test.describe('SQL Sandbox smoke', () => {
     await page.getByRole('button', { name: 'Горячие клавиши (?)' }).click()
     const dialog = page.getByRole('dialog', { name: 'Горячие клавиши' })
     await expect(dialog).toBeVisible()
+    // Фокус уходит в диалог: ввод не попадает в редактор под затемнением.
+    await expect(dialog).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
   })

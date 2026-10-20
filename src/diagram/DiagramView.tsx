@@ -19,7 +19,18 @@ import { toPng } from 'html-to-image'
 import { Download, Maximize2 } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { SchemaRelation } from '../schema/buildSchema'
-import { collectEdges, type DiagramEdge, type DiagramTable, layoutPositions, NODE_WIDTH, nodeHeight, type Point } from './layout'
+import {
+  collectEdges,
+  type DiagramEdge,
+  type DiagramTable,
+  HEADER_HEIGHT,
+  LIST_PADDING,
+  layoutPositions,
+  NODE_WIDTH,
+  nodeHeight,
+  type Point,
+  ROW_HEIGHT,
+} from './layout'
 import { loadPositions, savePositions } from './positions'
 import { useUiStore } from '../stores/uiStore'
 
@@ -203,16 +214,20 @@ function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
         fresh ? 'border-blue-500 ring-2 ring-blue-500/60' : 'border-zinc-300 dark:border-zinc-700'
       }`}
     >
-      <div className="rounded-t-md border-b border-zinc-200 bg-zinc-100 px-2 py-1.5 text-sm font-semibold dark:border-zinc-800 dark:bg-zinc-900">
+      <div
+        style={{ height: HEADER_HEIGHT }}
+        className="flex items-center rounded-t-md border-b border-zinc-200 bg-zinc-100 px-2 text-sm font-semibold dark:border-zinc-800 dark:bg-zinc-900"
+      >
         {table.name}
       </div>
-      <ul className="py-1">
+      <ul style={{ paddingTop: LIST_PADDING / 2, paddingBottom: LIST_PADDING / 2 }}>
         {table.columns.map((column) => (
           // Хэндлы стоят внутри строки колонки: React Flow центрирует их по высоте строки,
           // поэтому связи попадают точно на колонку при любом размере заголовка.
           <li
             key={column.name}
-            className="relative flex h-[22px] items-center gap-2 px-2 text-[11px]"
+            style={{ height: ROW_HEIGHT }}
+            className="relative flex items-center gap-2 px-2 text-[11px]"
           >
             <Handle type="target" position={Position.Left} id={`t-${column.name}`} className="!h-2 !w-2 !bg-zinc-500" />
             <Handle type="source" position={Position.Right} id={`s-${column.name}`} className="!h-2 !w-2 !bg-zinc-500" />

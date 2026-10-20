@@ -77,6 +77,8 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
 
   const [results, setResults] = useState<StatementResult[]>([])
   const [running, setRunning] = useState(false)
+  // Отмена поддерживается только для выполнения скрипта: EXPLAIN и сброс — одна операция.
+  const [cancellable, setCancellable] = useState(false)
   const [relations, setRelations] = useState<SchemaRelation[]>([])
   const [schemaLoading, setSchemaLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
@@ -159,12 +161,14 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
       const request = editorRef.current.getRunRequest(scope)
       if (request.text.trim() === '') return
 
+      // Флаг отмены сбрасывается до любого await: нажатие «Отмена» во время снимков уже учитывается.
+      cancelRef.current = false
+      setCancellable(true)
       setRunning(true)
       setNotice(null)
+      const isCancelled = (): boolean => cancelRef.current
       try {
         const before: Captured = { relations, snapshots: await takeSnapshots(ready, relations) }
-        cancelRef.current = false
-        const isCancelled = (): boolean => cancelRef.current
         const outcome = await executeScript(ready, request.text, request.baseOffset, isCancelled)
         setResults(outcome)
         if (isCancelled()) setNotice('Выполнение остановлено после текущего запроса')
@@ -184,6 +188,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
         recordHistory(tab.id, [historyEntry(failed)])
       } finally {
         setRunning(false)
+        setCancellable(false)
       }
     },
     [ready, running, relations, tab.id, computeChange, commitChange, recordHistory],
@@ -269,7 +274,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
   }
 
   /** Экспорт текущей вкладки: данные и код редактора в один .sql. */
-  const exportTab = async () => {
+  const exportTab = useCallback(async () => {
     if (!ready) return
     try {
       const current = await loadSchema(ready)
@@ -279,7 +284,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
     } catch (error: unknown) {
       setNotice(`Экспорт не удался: ${errorText(error)}`)
     }
-  }
+  }, [ready, tab.name, tab.sql])
 
   /**
    * Экспорт всех вкладок в один .json. Активная база уже открыта, остальные открываются
@@ -316,7 +321,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
     return () => {
       window.removeEventListener(EXPORT_TAB_EVENT, onExport)
     }
-  })
+  }, [exportTab])
 
   if (database.status === 'error') return <StorageErrorScreen error={database.error} />
 
@@ -335,9 +340,13 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
         </IconButton>
         {running ? (
           <RunStatus
-            onCancel={() => {
-              cancelRef.current = true
-            }}
+            onCancel={
+              cancellable
+                ? () => {
+                    cancelRef.current = true
+                  }
+                : undefined
+            }
           />
         ) : (
           <span className="min-w-0 truncate text-xs text-zinc-500" aria-live="polite">
@@ -572,7 +581,7 @@ function IconButton({
 }
 
 /** Индикатор выполнения: сколько секунд идёт запрос и кнопка остановки. */
-function RunStatus({ onCancel }: { onCancel: () => void }) {
+function RunStatus({ onCancel }: { onCancel?: () => void }) {
   const [startedAt] = useState(() => Date.now())
   const [now, setNow] = useState(startedAt)
 
@@ -589,13 +598,15 @@ function RunStatus({ onCancel }: { onCancel: () => void }) {
     <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300" role="status">
       <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
       <span className="tabular-nums">Выполняется… {((now - startedAt) / 1000).toFixed(1)} с</span>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/50"
-      >
-        Отмена
-      </button>
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/50"
+        >
+          Отмена
+        </button>
+      )}
     </div>
   )
 }

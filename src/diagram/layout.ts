@@ -25,12 +25,21 @@ export interface Point {
   y: number
 }
 
+/**
+ * Размеры узла. Эти же константы использует отрисовка (DiagramView), поэтому раскладка
+ * и фактическая высота не расходятся: высота заголовка задаётся явно, а не текстом.
+ */
 export const NODE_WIDTH = 240
-const HEADER_HEIGHT = 32
-const ROW_HEIGHT = 22
+/** Рамка узла сверху и снизу (1 px each). */
+export const NODE_BORDER = 2
+/** Заголовок включая свою нижнюю границу. */
+export const HEADER_HEIGHT = 33
+/** Вертикальные отступы списка колонок (py-1). */
+export const LIST_PADDING = 8
+export const ROW_HEIGHT = 22
 
 export function nodeHeight(table: DiagramTable): number {
-  return HEADER_HEIGHT + Math.max(table.columns.length, 1) * ROW_HEIGHT + 8
+  return NODE_BORDER + HEADER_HEIGHT + LIST_PADDING + Math.max(table.columns.length, 1) * ROW_HEIGHT
 }
 
 /**

@@ -32,14 +32,16 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
       const modifier = event.ctrlKey || event.metaKey
-      if (modifier && !event.altKey && key === 't') {
+      // Shift и Alt не входят в комбинации: Ctrl+Shift+T и Ctrl+Shift+S — чужие сочетания.
+      const plain = modifier && !event.altKey && !event.shiftKey
+      if (plain && key === 't') {
         event.preventDefault()
         useTabsStore.getState().addTab()
-      } else if (modifier && !event.altKey && key === 'w') {
+      } else if (plain && key === 'w') {
         event.preventDefault()
         const active = useTabsStore.getState().activeId
         closeTabWithConfirm(active)
-      } else if (modifier && !event.altKey && key === 's') {
+      } else if (plain && key === 's') {
         event.preventDefault()
         window.dispatchEvent(new Event(EXPORT_TAB_EVENT))
       } else if (event.key === '?' && !modifier && !isEditableTarget(event.target)) {
