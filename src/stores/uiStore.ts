@@ -2,12 +2,22 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
+export type SessionMode = 'data' | 'diagram'
+
+export const SESSION_WIDTH_MIN = 280
+export const SESSION_WIDTH_MAX = 720
 
 interface UiState {
   theme: ThemeMode
   schemaOpen: boolean
+  sessionOpen: boolean
+  sessionWidth: number
+  sessionMode: SessionMode
   setTheme: (theme: ThemeMode) => void
   toggleSchema: () => void
+  toggleSession: () => void
+  setSessionWidth: (width: number) => void
+  setSessionMode: (mode: SessionMode) => void
 }
 
 /** Настройки интерфейса; при недоступном localStorage работают в памяти. */
@@ -16,18 +26,36 @@ export const useUiStore = create<UiState>()(
     (set) => ({
       theme: 'system',
       schemaOpen: true,
+      sessionOpen: true,
+      sessionWidth: 380,
+      sessionMode: 'data',
       setTheme: (theme) => {
         set({ theme })
       },
       toggleSchema: () => {
         set((state) => ({ schemaOpen: !state.schemaOpen }))
       },
+      toggleSession: () => {
+        set((state) => ({ sessionOpen: !state.sessionOpen }))
+      },
+      setSessionWidth: (width) => {
+        set({ sessionWidth: Math.min(SESSION_WIDTH_MAX, Math.max(SESSION_WIDTH_MIN, Math.round(width))) })
+      },
+      setSessionMode: (mode) => {
+        set({ sessionMode: mode })
+      },
     }),
     {
       name: 'sql-sandbox:ui',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ theme: state.theme, schemaOpen: state.schemaOpen }),
+      partialize: (state) => ({
+        theme: state.theme,
+        schemaOpen: state.schemaOpen,
+        sessionOpen: state.sessionOpen,
+        sessionWidth: state.sessionWidth,
+        sessionMode: state.sessionMode,
+      }),
     },
   ),
 )

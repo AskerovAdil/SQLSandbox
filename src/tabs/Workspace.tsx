@@ -1,25 +1,45 @@
-import { Copy, PanelLeft, RotateCcw } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import type { PGliteWorker } from '@electric-sql/pglite/worker'
+import { Copy, PanelLeft, PanelRight, RotateCcw } from 'lucide-react'
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { ErrorBoundary } from '../app/ErrorBoundary'
 import { StorageErrorScreen } from '../app/StorageErrorScreen'
+import { setCompletionTables } from '../editor/monacoSetup'
 import { type EditorError, type RunScope, SqlEditor, type SqlEditorHandle } from '../editor/SqlEditor'
 import { executeScript, type StatementResult } from '../db/executeScript'
 import { RESET_SQL, stageCopy } from '../db/databaseCopy'
 import { useDatabase } from '../db/useDatabase'
 import { ResultPanel } from '../results/ResultPanel'
 import { loadSchema } from '../schema/loadSchema'
-import type { SchemaRelation } from '../schema/buildSchema'
+import { type SchemaRelation, relationKindLabel } from '../schema/buildSchema'
 import { SchemaTree } from '../schema/SchemaTree'
-import { relationKindLabel } from '../schema/buildSchema'
-import { setCompletionTables } from '../editor/monacoSetup'
-import { useUiStore } from '../stores/uiStore'
+import { SessionPanel, type SessionFailure } from '../session/SessionPanel'
+import { buildSessionTables, freshRelationNames, type SessionTable, takeSnapshots } from '../session/sessionView'
+import type { TableSnapshot } from '../session/snapshot'
+import { SESSION_WIDTH_MAX, SESSION_WIDTH_MIN, useUiStore } from '../stores/uiStore'
 import { type Tab, useTabsStore } from '../stores/tabsStore'
-import type { PGliteWorker } from '@electric-sql/pglite/worker'
 
 interface WorkspaceProps {
   tab: Tab
   dark: boolean
 }
+
+/** Результат чтения схемы и данных после выполнения или сброса. */
+interface ChangeResult {
+  relations: SchemaRelation[]
+  tables: SessionTable[]
+  fresh: Set<string>
+  hadBefore: boolean
+}
+
+/** Состояние схемы и данных на момент, с которым сравниваем следующее изменение. */
+interface Captured {
+  relations: SchemaRelation[]
+  snapshots: Map<string, TableSnapshot>
+}
+
+/** Сколько подсвечивать новые объекты и через сколько убрать удалённые таблицы. */
+const FRESH_MS = 2500
+const DROPPED_MS = 1500
 
 /**
  * Рабочая область одной вкладки. Вызывается с key=tab.id, поэтому каждая вкладка
@@ -31,6 +51,9 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
 
   const schemaOpen = useUiStore((state) => state.schemaOpen)
   const toggleSchema = useUiStore((state) => state.toggleSchema)
+  const sessionOpen = useUiStore((state) => state.sessionOpen)
+  const toggleSession = useUiStore((state) => state.toggleSession)
+  const sessionWidth = useUiStore((state) => state.sessionWidth)
   const setSql = useTabsStore((state) => state.setSql)
   const addTabFrom = useTabsStore((state) => state.addTabFrom)
 
@@ -41,6 +64,8 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
   const [relations, setRelations] = useState<SchemaRelation[]>([])
   const [schemaLoading, setSchemaLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
+  const [sessionTables, setSessionTables] = useState<SessionTable[]>([])
+  const [freshNames, setFreshNames] = useState<Set<string>>(() => new Set())
 
   // Автодополнение берёт таблицы из схемы этой вкладки; при уходе со вкладки список очищается.
   useEffect(() => {
@@ -57,25 +82,44 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
     setCompletionTables([])
   }, [])
 
-  const refreshSchema = useCallback(async (db: PGliteWorker) => {
-    try {
-      setRelations(await loadSchema(db))
-    } catch (error: unknown) {
-      setNotice(`Не удалось загрузить схему: ${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      setSchemaLoading(false)
+  /** Читает схему и данные после изменения. Состояние не трогает: это делает commitChange. */
+  const computeChange = useCallback(async (db: PGliteWorker, before: Captured | null): Promise<ChangeResult> => {
+    const nextRelations = await loadSchema(db)
+    const snapshots = await takeSnapshots(db, nextRelations)
+    return {
+      relations: nextRelations,
+      tables: buildSessionTables({
+        before: before ? { relations: before.relations, snapshots: before.snapshots } : null,
+        after: { relations: nextRelations, snapshots },
+      }),
+      fresh: before ? freshRelationNames(before.relations, nextRelations) : new Set<string>(),
+      hadBefore: before !== null,
+    }
+  }, [])
+
+  const commitChange = useCallback((change: ChangeResult) => {
+    setRelations(change.relations)
+    setSessionTables(change.tables)
+    setFreshNames(change.fresh)
+    if (change.hadBefore) {
+      window.setTimeout(() => {
+        setFreshNames(new Set())
+      }, FRESH_MS)
+      window.setTimeout(() => {
+        setSessionTables((current) => current.filter((table) => table.status !== 'dropped'))
+      }, DROPPED_MS)
     }
   }, [])
 
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    loadSchema(ready)
-      .then((next) => {
-        if (!cancelled) setRelations(next)
+    computeChange(ready, null)
+      .then((change) => {
+        if (!cancelled) commitChange(change)
       })
       .catch((error: unknown) => {
-        if (!cancelled) setNotice(`Не удалось загрузить схему: ${error instanceof Error ? error.message : String(error)}`)
+        if (!cancelled) setNotice(`Не удалось загрузить схему: ${errorText(error)}`)
       })
       .finally(() => {
         if (!cancelled) setSchemaLoading(false)
@@ -83,7 +127,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
     return () => {
       cancelled = true
     }
-  }, [ready])
+  }, [ready, computeChange, commitChange])
 
   const runScope = useCallback(
     async (scope: RunScope) => {
@@ -94,7 +138,10 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
       setRunning(true)
       setNotice(null)
       try {
-        setResults(await executeScript(ready, request.text, request.baseOffset))
+        const before: Captured = { relations, snapshots: await takeSnapshots(ready, relations) }
+        const outcome = await executeScript(ready, request.text, request.baseOffset)
+        setResults(outcome)
+        commitChange(await computeChange(ready, before))
       } catch (error: unknown) {
         setResults([
           {
@@ -103,16 +150,15 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
             start: request.baseOffset,
             durationMs: 0,
             kind: 'error',
-            message: error instanceof Error ? error.message : String(error),
+            message: errorText(error),
             offset: request.baseOffset,
           },
         ])
       } finally {
         setRunning(false)
-        void refreshSchema(ready)
       }
     },
-    [ready, running, refreshSchema],
+    [ready, running, relations, computeChange, commitChange],
   )
 
   const duplicate = async () => {
@@ -123,7 +169,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
       const newId = addTabFrom(tab.id, tab.sql)
       stageCopy(newId, dump)
     } catch (error: unknown) {
-      setNotice(`Не удалось скопировать вкладку: ${error instanceof Error ? error.message : String(error)}`)
+      setNotice(`Не удалось скопировать вкладку: ${errorText(error)}`)
     }
   }
 
@@ -132,14 +178,15 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
     if (!window.confirm('Удалить все таблицы, представления и данные этой вкладки? Код в редакторе останется.')) return
     setRunning(true)
     try {
+      const before: Captured = { relations, snapshots: await takeSnapshots(ready, relations) }
       await ready.exec(RESET_SQL)
       setResults([])
       setNotice('База вкладки очищена')
+      commitChange(await computeChange(ready, before))
     } catch (error: unknown) {
-      setNotice(`Сброс не удался: ${error instanceof Error ? error.message : String(error)}`)
+      setNotice(`Сброс не удался: ${errorText(error)}`)
     } finally {
       setRunning(false)
-      void refreshSchema(ready)
     }
   }
 
@@ -148,6 +195,8 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
   const failed = results.find((result) => result.kind === 'error')
   const error: EditorError | null =
     failed?.kind === 'error' ? { offset: failed.offset, message: failed.message } : null
+  const failure: SessionFailure | null =
+    failed?.kind === 'error' && results.length > 1 ? { index: failed.index, message: failed.message } : null
   const busy = !ready || running
 
   return (
@@ -165,6 +214,9 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
           </IconButton>
           <IconButton label="Сбросить базу вкладки" onClick={() => void reset()} disabled={busy}>
             <RotateCcw size={15} />
+          </IconButton>
+          <IconButton label={sessionOpen ? 'Скрыть таблицы сессии' : 'Показать таблицы сессии'} onClick={toggleSession} active={sessionOpen}>
+            <PanelRight size={16} />
           </IconButton>
           <button
             type="button"
@@ -236,8 +288,57 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
             </ErrorBoundary>
           </section>
         </div>
+
+        {sessionOpen && (
+          <>
+            <SplitHandle />
+            <aside style={{ width: sessionWidth }} className="flex shrink-0 flex-col bg-white dark:bg-zinc-950">
+              <SessionPanel
+                tabId={tab.id}
+                tables={sessionTables}
+                relations={relations}
+                freshNames={freshNames}
+                failure={failure}
+              />
+            </aside>
+          </>
+        )}
       </div>
     </div>
+  )
+}
+
+/** Перетаскивание границы между редактором и панелью «Таблицы сессии». */
+function SplitHandle() {
+  const setWidth = useUiStore((state) => state.setSessionWidth)
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    dragRef.current = { startX: event.clientX, startWidth: useUiStore.getState().sessionWidth }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag) return
+    setWidth(drag.startWidth - (event.clientX - drag.startX))
+  }
+  const onPointerUp = () => {
+    dragRef.current = null
+  }
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Ширина панели таблиц сессии"
+      aria-valuemin={SESSION_WIDTH_MIN}
+      aria-valuemax={SESSION_WIDTH_MAX}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      className="w-1 shrink-0 cursor-col-resize bg-zinc-200 hover:bg-blue-500/60 dark:bg-zinc-800"
+    />
   )
 }
 
@@ -268,6 +369,10 @@ function IconButton({
       {children}
     </button>
   )
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /** Имя в SELECT: простые имена как есть, остальные в двойных кавычках. */

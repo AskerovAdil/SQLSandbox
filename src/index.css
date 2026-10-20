@@ -16,3 +16,21 @@ html {
   outline: 2px solid #3b82f6;
   outline-offset: 1px;
 }
+
+/* Удалённая таблица плавно уходит из панели «Таблицы сессии». */
+@keyframes leave {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.animate-leave {
+  animation: leave 0.6s ease-in 0.9s forwards;
+}
+
+/* Связь, относящаяся к только что изменённой таблице. */
+.diagram-edge-fresh path {
+  stroke: #3b82f6;
+  stroke-width: 2.5px;
+}
