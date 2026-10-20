@@ -207,24 +207,15 @@ function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
         {table.name}
       </div>
       <ul className="py-1">
-        {table.columns.map((column, index) => (
+        {table.columns.map((column) => (
+          // Хэндлы стоят внутри строки колонки: React Flow центрирует их по высоте строки,
+          // поэтому связи попадают точно на колонку при любом размере заголовка.
           <li
             key={column.name}
             className="relative flex h-[22px] items-center gap-2 px-2 text-[11px]"
-            style={{ height: 22 }}
           >
-            <Handle
-              type="target"
-              position={Position.Left}
-              id={`t-${column.name}`}
-              style={{ top: 32 + index * 22 + 11, background: '#71717a' }}
-            />
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={`s-${column.name}`}
-              style={{ top: 32 + index * 22 + 11, background: '#71717a' }}
-            />
+            <Handle type="target" position={Position.Left} id={`t-${column.name}`} className="!h-2 !w-2 !bg-zinc-500" />
+            <Handle type="source" position={Position.Right} id={`s-${column.name}`} className="!h-2 !w-2 !bg-zinc-500" />
             <span className="w-3 shrink-0 text-amber-600">{column.primaryKey ? '🔑' : ''}</span>
             <span className="truncate">{column.name}</span>
             <span className="ml-auto shrink-0 text-zinc-500">{column.type}</span>
