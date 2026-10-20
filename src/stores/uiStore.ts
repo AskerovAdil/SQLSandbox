@@ -20,13 +20,18 @@ interface UiState {
   setSessionMode: (mode: SessionMode) => void
 }
 
+function defaultWidth(): number {
+  return typeof window === 'undefined' ? 1280 : window.innerWidth
+}
+
 /** Настройки интерфейса; при недоступном localStorage работают в памяти. */
 export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
       theme: 'system',
-      schemaOpen: true,
-      sessionOpen: true,
+      // На узком экране при первом открытии боковые панели свёрнуты, чтобы редактор не сжимался.
+      schemaOpen: defaultWidth() >= 1100,
+      sessionOpen: defaultWidth() >= 1000,
       sessionWidth: 380,
       sessionMode: 'data',
       setTheme: (theme) => {

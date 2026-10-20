@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { deleteIndexedDb, tabDatabaseName } from './db/resetLocalData'
 import { setPendingSeed } from './db/pendingSeed'
 import { stageCopy } from './db/databaseCopy'
-import { useHistoryStore } from './stores/historyStore'
-import { resolveDark, useUiStore } from './stores/uiStore'
+import { useUiStore, resolveDark } from './stores/uiStore'
 import { useTabsStore } from './stores/tabsStore'
 import { ThemeToggle } from './app/ThemeToggle'
+import { ShortcutsDialog } from './app/ShortcutsDialog'
+import { closeTabWithConfirm, EXPORT_TAB_EVENT, isEditableTarget } from './app/hotkeys'
 import { TabBar } from './tabs/TabBar'
 import { Workspace } from './tabs/Workspace'
 import { TEMPLATES } from './templates'
@@ -18,28 +18,45 @@ export default function App() {
   const tabs = useTabsStore((state) => state.tabs)
   const activeId = useTabsStore((state) => state.activeId)
   const addTab = useTabsStore((state) => state.addTab)
-  const closeTab = useTabsStore((state) => state.closeTab)
   const renameTab = useTabsStore((state) => state.renameTab)
   const setActive = useTabsStore((state) => state.setActive)
   const moveTab = useTabsStore((state) => state.moveTab)
-  const removeHistory = useHistoryStore((state) => state.remove)
   const importRef = useRef<HTMLInputElement>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   const theme = useUiStore((state) => state.theme)
   const dark = useDarkMode(theme)
 
+  // Горячие клавиши. Ctrl+T и Ctrl+W браузеры могут перехватить раньше страницы.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
+      const modifier = event.ctrlKey || event.metaKey
+      if (modifier && !event.altKey && key === 't') {
+        event.preventDefault()
+        useTabsStore.getState().addTab()
+      } else if (modifier && !event.altKey && key === 'w') {
+        event.preventDefault()
+        const active = useTabsStore.getState().activeId
+        closeTabWithConfirm(active)
+      } else if (modifier && !event.altKey && key === 's') {
+        event.preventDefault()
+        window.dispatchEvent(new Event(EXPORT_TAB_EVENT))
+      } else if (event.key === '?' && !modifier && !isEditableTarget(event.target)) {
+        event.preventDefault()
+        setShortcutsOpen(true)
+      } else if (event.key === 'Escape') {
+        setShortcutsOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0]
   if (!activeTab) return null
-
-  const handleClose = (id: string) => {
-    const tab = tabs.find((item) => item.id === id)
-    if (!tab) return
-    if (!window.confirm(`Закрыть вкладку «${tab.name}»? Её база данных будет удалена.`)) return
-    closeTab(id)
-    removeHistory(id)
-    // Если вкладка открыта, её соединение закроется при размонтировании; удаление дождётся этого.
-    void deleteIndexedDb(tabDatabaseName(id))
-  }
 
   const handleAddTemplate = (templateId: string | null) => {
     const template = TEMPLATES.find((item) => item.id === templateId)
@@ -62,7 +79,7 @@ export default function App() {
       return
     }
     // Файл одной вкладки: данные до маркера выполняются, после — код редактора.
-    // Файл без маркера целиком попадает в редактор и не выполняется сам.
+    // Файл без маркера целиком попадает в редактор и не выполняется.
     const name = file.name.replace(/\.sql$/i, '') || 'Импорт'
     const { before, after } = splitAtMarker(text, EDITOR_MARKER)
     const id = addTab({ name, sql: after ?? text })
@@ -93,16 +110,33 @@ export default function App() {
         onImport={() => {
           importRef.current?.click()
         }}
-        onClose={handleClose}
+        onClose={closeTabWithConfirm}
         onRename={renameTab}
         onMove={moveTab}
       >
         <ThemeToggle />
       </TabBar>
       <Workspace key={activeTab.id} tab={activeTab} dark={dark} />
-      <footer className="border-t border-zinc-200 px-4 py-1 text-xs text-zinc-500 dark:border-zinc-800">
-        Данные хранятся только в этом браузере на этом устройстве. Для переноса используйте экспорт и импорт.
+      <footer className="flex items-center gap-3 border-t border-zinc-200 px-4 py-1 text-xs text-zinc-500 dark:border-zinc-800">
+        <span className="min-w-0 truncate">
+          Данные хранятся только в этом браузере на этом устройстве. Для переноса используйте экспорт и импорт.
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setShortcutsOpen(true)
+          }}
+          className="ml-auto shrink-0 rounded px-1.5 py-0.5 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        >
+          Горячие клавиши (?)
+        </button>
       </footer>
+      <ShortcutsDialog
+        open={shortcutsOpen}
+        onClose={() => {
+          setShortcutsOpen(false)
+        }}
+      />
     </div>
   )
 }

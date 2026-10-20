@@ -96,3 +96,8 @@ Base-путь берётся из имени репозитория в CI авт
 ## Разработка
 
 Стек: Vite, React, TypeScript (strict), PGlite (PGliteWorker), Monaco Editor, Zustand, Vitest. Подробный план по этапам — в описании проекта.
+
+## Тесты
+
+- `npm run check` — typecheck, lint и юнит-тесты. Этот же набор выполняется в CI перед деплоем.
+- `npm run test:e2e` — собирает production-версию с base `/SQLSandbox/` и запускает Playwright-тесты. Первый запуск: `npx playwright install chromium`. Если установлен Chrome, можно использовать его: `PW_CHANNEL=chrome npm run test:e2e`.

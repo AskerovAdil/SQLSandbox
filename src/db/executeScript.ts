@@ -27,15 +27,19 @@ export type StatementResult =
  * Выполняет statements по очереди. После первой ошибки выполнение останавливается:
  * последний элемент результата — ошибка, и база остаётся в состоянии на момент сбоя.
  * baseOffset — смещение script в редакторе, нужно для позиции ошибки.
+ * shouldStop — проверяется перед каждым statement: отмена срабатывает между запросами.
+ * PGlite не умеет прерывать выполнение одного запроса, поэтому текущий statement доводится до конца.
  */
 export async function executeScript(
   db: PGliteWorker,
   script: string,
   baseOffset: number,
+  shouldStop: () => boolean = () => false,
 ): Promise<StatementResult[]> {
   const results: StatementResult[] = []
 
   for (const [index, statement] of splitStatements(script).entries()) {
+    if (shouldStop()) break
     const start = baseOffset + statement.start
     const startedAt = performance.now()
     const base = { index, sql: statement.text, start }

@@ -24,6 +24,7 @@ import type { TableSnapshot } from '../session/snapshot'
 import { type HistoryEntry, useHistoryStore } from '../stores/historyStore'
 import { SESSION_WIDTH_MAX, SESSION_WIDTH_MIN, useUiStore } from '../stores/uiStore'
 import { type Tab, useTabsStore } from '../stores/tabsStore'
+import { EXPORT_TAB_EVENT } from '../app/hotkeys'
 import { type BundleTab, buildBundle } from '../transfer/bundle'
 import { dumpDatabaseSql, buildTabFile } from '../transfer/sqlDump'
 import { blobToBase64, downloadFile, safeFileName } from '../transfer/files'
@@ -71,6 +72,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
   const recordHistory = useHistoryStore((state) => state.record)
 
   const editorRef = useRef<SqlEditorHandle>(null)
+  const cancelRef = useRef(false)
   const initRef = useRef<{ db: PGliteWorker; promise: Promise<ChangeResult> } | null>(null)
 
   const [results, setResults] = useState<StatementResult[]>([])
@@ -161,8 +163,11 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
       setNotice(null)
       try {
         const before: Captured = { relations, snapshots: await takeSnapshots(ready, relations) }
-        const outcome = await executeScript(ready, request.text, request.baseOffset)
+        cancelRef.current = false
+        const isCancelled = (): boolean => cancelRef.current
+        const outcome = await executeScript(ready, request.text, request.baseOffset, isCancelled)
         setResults(outcome)
+        if (isCancelled()) setNotice('Выполнение остановлено после текущего запроса')
         recordHistory(tab.id, outcome.map(historyEntry))
         commitChange(await computeChange(ready, before))
       } catch (error: unknown) {
@@ -302,6 +307,17 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
     }
   }
 
+  // Ctrl+S обрабатывает приложение, но сам файл собирает рабочая область активной вкладки.
+  useEffect(() => {
+    const onExport = () => {
+      void exportTab()
+    }
+    window.addEventListener(EXPORT_TAB_EVENT, onExport)
+    return () => {
+      window.removeEventListener(EXPORT_TAB_EVENT, onExport)
+    }
+  })
+
   if (database.status === 'error') return <StorageErrorScreen error={database.error} />
 
   const failed = results.find((result) => result.kind === 'error')
@@ -317,9 +333,17 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
         <IconButton label={schemaOpen ? 'Скрыть схему' : 'Показать схему'} onClick={toggleSchema} active={schemaOpen}>
           <PanelLeft size={16} />
         </IconButton>
-        <span className="min-w-0 truncate text-xs text-zinc-500" aria-live="polite">
-          {ready ? (notice ?? 'PostgreSQL · PGlite') : 'Открываем базу…'}
-        </span>
+        {running ? (
+          <RunStatus
+            onCancel={() => {
+              cancelRef.current = true
+            }}
+          />
+        ) : (
+          <span className="min-w-0 truncate text-xs text-zinc-500" aria-live="polite">
+            {ready ? (notice ?? 'PostgreSQL · PGlite') : 'Открываем базу…'}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           <IconButton label="Дублировать вкладку вместе с данными" onClick={() => void duplicate()} disabled={busy}>
             <Copy size={15} />
@@ -544,6 +568,35 @@ function IconButton({
     >
       {children}
     </button>
+  )
+}
+
+/** Индикатор выполнения: сколько секунд идёт запрос и кнопка остановки. */
+function RunStatus({ onCancel }: { onCancel: () => void }) {
+  const [startedAt] = useState(() => Date.now())
+  const [now, setNow] = useState(startedAt)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+    }, 250)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300" role="status">
+      <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
+      <span className="tabular-nums">Выполняется… {((now - startedAt) / 1000).toFixed(1)} с</span>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/50"
+      >
+        Отмена
+      </button>
+    </div>
   )
 }
 
