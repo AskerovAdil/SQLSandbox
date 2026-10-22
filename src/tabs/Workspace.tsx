@@ -1,5 +1,5 @@
 import type { PGliteWorker } from '@electric-sql/pglite/worker'
-import { Activity, Copy, FileDown, PanelLeft, PanelRight, Package, RotateCcw } from 'lucide-react'
+import { Activity, Copy, FileDown, PanelLeft, PanelRight, Package, RotateCcw, Share2 } from 'lucide-react'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { ErrorBoundary } from '../app/ErrorBoundary'
 import { StorageErrorScreen } from '../app/StorageErrorScreen'
@@ -28,6 +28,9 @@ import { EXPORT_TAB_EVENT } from '../app/hotkeys'
 import { type BundleTab, buildBundle } from '../transfer/bundle'
 import { dumpDatabaseSql, buildTabFile } from '../transfer/sqlDump'
 import { blobToBase64, downloadFile, safeFileName } from '../transfer/files'
+import { loadSandbox, saveSandbox, useSandboxStatus, useSandboxStore } from '../share/sandboxSync'
+import { SandboxStatusLine } from '../share/SandboxStatusLine'
+import { ShareDialog } from '../share/ShareDialog'
 
 interface WorkspaceProps {
   tab: Tab
@@ -51,14 +54,47 @@ interface Captured {
 /** Сколько подсвечивать новые объекты и через сколько убрать удалённые таблицы. */
 const FRESH_MS = 2500
 const DROPPED_MS = 1500
+/** Пауза после последнего изменения текста, после которой общая песочница сохраняется. */
+const SAVE_DELAY_MS = 1500
 
 type SidebarMode = 'schema' | 'history'
 
 /**
- * Рабочая область одной вкладки. Вызывается с key=tab.id, поэтому каждая вкладка
- * открывает свою базу, а при переключении предыдущая база закрывается.
+ * Вкладка общей песочницы сначала загружает версию с GitHub и только потом открывает базу.
+ * Обычная вкладка сразу показывает рабочую область.
  */
 export function Workspace({ tab, dark }: WorkspaceProps) {
+  const sandboxId = tab.sandboxId
+  const status = useSandboxStatus(sandboxId)
+
+  useEffect(() => {
+    if (sandboxId && !useSandboxStore.getState().byId[sandboxId]) void loadSandbox(tab.id, sandboxId)
+  }, [sandboxId, tab.id])
+
+  if (sandboxId && status?.loadError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm">
+        <p className="font-medium">Не удалось загрузить общую песочницу</p>
+        <p className="max-w-lg text-zinc-600 dark:text-zinc-400">{status.loadError}</p>
+        <button
+          type="button"
+          onClick={() => {
+            void loadSandbox(tab.id, sandboxId)
+          }}
+          className="rounded border border-zinc-300 px-3 py-1 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+        >
+          Повторить
+        </button>
+      </div>
+    )
+  }
+  if (sandboxId && (status === undefined || status.loading)) {
+    return <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">Загружаем общую песочницу…</div>
+  }
+  return <WorkspaceBody tab={tab} dark={dark} />
+}
+
+function WorkspaceBody({ tab, dark }: WorkspaceProps) {
   const database = useDatabase(tab.id)
   const ready: PGliteWorker | null = database.status === 'ready' ? database.db : null
 
@@ -85,6 +121,22 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
   const [sessionTables, setSessionTables] = useState<SessionTable[]>([])
   const [freshNames, setFreshNames] = useState<Set<string>>(() => new Set())
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('schema')
+  const [shareOpen, setShareOpen] = useState(false)
+
+  // Общая песочница: сохраняем после паузы в наборе текста. Пока конфликт, автосохранение стоит.
+  const lastSavedSql = useRef(tab.sql)
+  useEffect(() => {
+    const sandboxId = tab.sandboxId
+    if (!sandboxId || !ready || tab.sql === lastSavedSql.current) return
+    const timer = window.setTimeout(() => {
+      if (useSandboxStore.getState().byId[sandboxId]?.saveState === 'conflict') return
+      lastSavedSql.current = tab.sql
+      void saveSandbox(tab.id, sandboxId, ready)
+    }, SAVE_DELAY_MS)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [tab.id, tab.sandboxId, tab.sql, ready])
 
   // Автодополнение берёт таблицы из схемы этой вкладки; при уходе со вкладки список очищается.
   useEffect(() => {
@@ -174,6 +226,8 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
         if (isCancelled()) setNotice('Выполнение остановлено после текущего запроса')
         recordHistory(tab.id, outcome.map(historyEntry))
         commitChange(await computeChange(ready, before))
+        // После выполнения данные могли измениться: сохраняем и их, не только текст.
+        if (tab.sandboxId) void saveSandbox(tab.id, tab.sandboxId, ready)
       } catch (error: unknown) {
         const failed: StatementResult = {
           index: 0,
@@ -191,7 +245,7 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
         setCancellable(false)
       }
     },
-    [ready, running, relations, tab.id, computeChange, commitChange, recordHistory],
+    [ready, running, relations, tab.id, tab.sandboxId, computeChange, commitChange, recordHistory],
   )
 
   /**
@@ -334,6 +388,9 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {shareOpen && ready && (
+        <ShareDialog tabId={tab.id} sandboxId={tab.sandboxId} db={ready} onClose={() => { setShareOpen(false) }} />
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
         <IconButton label={schemaOpen ? 'Скрыть схему' : 'Показать схему'} onClick={toggleSchema} active={schemaOpen}>
           <PanelLeft size={16} />
@@ -348,12 +405,23 @@ export function Workspace({ tab, dark }: WorkspaceProps) {
                 : undefined
             }
           />
+        ) : tab.sandboxId ? (
+          <SandboxStatusLine
+            tabId={tab.id}
+            sandboxId={tab.sandboxId}
+            onOpenShare={() => {
+              setShareOpen(true)
+            }}
+          />
         ) : (
           <span className="min-w-0 truncate text-xs text-zinc-500" aria-live="polite">
             {ready ? (notice ?? 'PostgreSQL · PGlite') : 'Открываем базу…'}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
+          <IconButton label="Поделиться песочницей" onClick={() => { setShareOpen(true) }} disabled={!ready}>
+            <Share2 size={15} />
+          </IconButton>
           <IconButton label="Дублировать вкладку вместе с данными" onClick={() => void duplicate()} disabled={busy}>
             <Copy size={15} />
           </IconButton>

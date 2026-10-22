@@ -13,6 +13,7 @@ import { splitAtMarker } from './lib/splitAtMarker'
 import { EDITOR_MARKER } from './transfer/sqlDump'
 import { base64ToBlob, readFileText } from './transfer/files'
 import { parseBundle } from './transfer/bundle'
+import { parseSandboxId } from './share/route'
 
 export default function App() {
   const tabs = useTabsStore((state) => state.tabs)
@@ -22,6 +23,12 @@ export default function App() {
   const setActive = useTabsStore((state) => state.setActive)
   const moveTab = useTabsStore((state) => state.moveTab)
   const importRef = useRef<HTMLInputElement>(null)
+
+  // Адрес вида <base>/<guid> открывает общую песочницу; существующая вкладка переиспользуется.
+  useEffect(() => {
+    const sandboxId = parseSandboxId(window.location.pathname, import.meta.env.BASE_URL)
+    if (sandboxId) useTabsStore.getState().openSandbox(sandboxId)
+  }, [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   const theme = useUiStore((state) => state.theme)

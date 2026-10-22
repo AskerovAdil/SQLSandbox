@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SQL Sandbox</title>
+    <script>
+      // GitHub Pages отдаёт 404 для прямых переходов вида /SQLSandbox/<guid>. Перенаправляем
+      // на корень приложения и передаём путь в ?p=: main.tsx вернёт его в адресную строку.
+      (function () {
+        var segments = location.pathname.split('/').filter(Boolean);
+        var base = '/' + (segments[0] || '') + '/';
+        var rest = segments.slice(1).join('/');
+        location.replace(base + '?p=' + encodeURIComponent('/' + rest) + location.hash);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

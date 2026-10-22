@@ -5,6 +5,8 @@ export interface Tab {
   id: string
   name: string
   sql: string
+  /** GUID общей песочницы (см. share/githubStore.ts). Отсутствует у локальных вкладок. */
+  sandboxId?: string
 }
 
 interface TabsState {
@@ -19,6 +21,10 @@ interface TabsState {
   setActive: (id: string) => void
   setSql: (id: string, sql: string) => void
   moveTab: (fromIndex: number, toIndex: number) => void
+  /** Открывает общую песочницу по GUID: находит существующую вкладку или создаёт новую. */
+  openSandbox: (sandboxId: string) => void
+  /** Привязывает локальную вкладку к общей песочнице после первого «Поделиться». */
+  setSandboxId: (tabId: string, sandboxId: string) => void
 }
 
 export const STATE_VERSION = 1
@@ -32,8 +38,8 @@ INSERT INTO demo VALUES (1, 'Анна', 9.5), (2, 'Борис', NULL), (3, '', 7
 SELECT id, name, score FROM demo ORDER BY id;
 `
 
-export function createTab(name: string, sql = ''): Tab {
-  return { id: crypto.randomUUID(), name, sql }
+export function createTab(name: string, sql = '', sandboxId?: string): Tab {
+  return sandboxId ? { id: crypto.randomUUID(), name, sql, sandboxId } : { id: crypto.randomUUID(), name, sql }
 }
 
 function nextTabName(tabs: Tab[]): string {
@@ -133,6 +139,22 @@ export const useTabsStore = create<TabsState>()(
         set({ activeId: id })
       },
 
+      openSandbox: (sandboxId) => {
+        const existing = get().tabs.find((tab) => tab.sandboxId === sandboxId)
+        if (existing) {
+          set({ activeId: existing.id })
+          return
+        }
+        const tab = createTab('Общая песочница', '', sandboxId)
+        set((state) => ({ tabs: [...state.tabs, tab], activeId: tab.id }))
+      },
+
+      setSandboxId: (tabId, sandboxId) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, sandboxId } : tab)),
+        }))
+      },
+
       setSql: (id, sql) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, sql } : tab)),
@@ -181,7 +203,8 @@ export function sanitize(value: unknown): Pick<TabsState, 'tabs' | 'activeId'> |
     if (typeof item !== 'object' || item === null) return null
     const tab = item as Partial<Tab>
     if (typeof tab.id !== 'string' || typeof tab.name !== 'string' || typeof tab.sql !== 'string') return null
-    tabs.push({ id: tab.id, name: tab.name, sql: tab.sql })
+    const sandboxId = typeof tab.sandboxId === 'string' ? tab.sandboxId : undefined
+    tabs.push(sandboxId ? { id: tab.id, name: tab.name, sql: tab.sql, sandboxId } : { id: tab.id, name: tab.name, sql: tab.sql })
   }
   if (tabs.length === 0) return null
 

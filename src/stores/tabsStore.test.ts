@@ -86,3 +86,25 @@ describe('sanitize', () => {
     expect(INITIAL_SQL).toContain('CREATE TABLE')
   })
 })
+
+describe('shared sandbox tabs', () => {
+  const guid = '11111111-2222-4333-8444-555555555555'
+
+  it('opens a sandbox once and reuses the tab on the next call', () => {
+    resetStore(['A'])
+    useTabsStore.getState().openSandbox(guid)
+    const first = useTabsStore.getState().tabs.find((tab) => tab.sandboxId === guid)
+    expect(first).toBeDefined()
+    useTabsStore.getState().openSandbox(guid)
+    expect(useTabsStore.getState().tabs.filter((tab) => tab.sandboxId === guid)).toHaveLength(1)
+    expect(useTabsStore.getState().activeId).toBe(first?.id)
+  })
+
+  it('links a local tab to a sandbox and keeps the link across sanitize', () => {
+    const [local] = resetStore(['Локальная'])
+    if (!local) throw new Error('no tab')
+    useTabsStore.getState().setSandboxId(local.id, guid)
+    const tabs = useTabsStore.getState().tabs
+    expect(sanitize({ tabs, activeId: local.id })?.tabs[0]?.sandboxId).toBe(guid)
+  })
+})
