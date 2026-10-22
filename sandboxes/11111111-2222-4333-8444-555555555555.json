@@ -1,0 +1,7 @@
+{
+  "format": "sql-sandbox-shared",
+  "version": 1,
+  "sql": "-- Общая песочница (тест чтения)\nCREATE TABLE team (id int PRIMARY KEY, name text);\nSELECT * FROM team;\n",
+  "data": "",
+  "updatedAt": "2026-10-22T10:00:00.000Z"
+}
